@@ -1174,3 +1174,136 @@ footer.site .foot-bottom{ max-width:1280px; margin:32px auto 0; padding:20px 32p
 .hero-inner:not(:has(.hero-photo)){ grid-template-columns:1fr; }
 
 /* End QA FIX BLOCK v3 */
+
+/* ===================================================================
+   ============== QA FIX BLOCK · v4 · IMAGE CONTAINER FIX ============
+   Issue: pages use 3 different image-container classes, only one was
+   properly styled, and many pages have inline style="background:..."
+   that overrides our CSS. Fix all 3 with !important + gradient base
+   so containers NEVER show as empty/text-bleed boxes.
+   =================================================================== */
+
+/* GLOBAL IMAGE CONTAINER — every image div gets a navy gradient base
+   plus a Picsum overlay. If Picsum fails, the gradient still renders
+   so the box looks intentional, never blank. */
+.diff-card .img,
+.bleed-row .img,
+.card-img,
+.hero-photo{
+  background-color:#1E2A6B !important;
+  background-image:
+    linear-gradient(135deg, rgba(15,20,80,.45) 0%, rgba(43,143,214,.25) 100%),
+    url('https://picsum.photos/seed/simsree-default/900/520') !important;
+  background-size:cover !important;
+  background-position:center !important;
+  background-repeat:no-repeat !important;
+  color:transparent !important;
+  font-size:0 !important;
+  text-indent:-9999px !important;
+  overflow:hidden !important;
+  border:0 !important;
+  border-radius:var(--r-md);
+}
+
+/* DIFF-CARD top photo strip — restore proper height (the screenshot
+   showed only a 30px sliver because of an earlier height override) */
+.diff-card{
+  background:white;
+  border:1px solid var(--steel);
+  border-radius:var(--r-md);
+  overflow:hidden;
+  box-shadow:var(--shadow-sm);
+  display:flex;
+  flex-direction:column;
+}
+.diff-card .img{
+  min-height:200px !important;
+  height:200px !important;
+  border-radius:0 !important;   /* corners handled by parent */
+  flex-shrink:0;
+}
+.diff-card .img.alt{
+  background-image:
+    linear-gradient(135deg, rgba(43,143,214,.35) 0%, rgba(15,20,80,.55) 100%),
+    url('https://picsum.photos/seed/simsree-faculty/900/520') !important;
+}
+.diff-card .body-pad{ padding:24px 26px 26px; }
+
+/* BLEED ROW image — fixed minimum height and proper photo */
+.bleed-row .img{
+  min-height:380px !important;
+  height:auto !important;
+  border-radius:var(--r-lg);
+  background-image:
+    linear-gradient(135deg, rgba(15,20,80,.45) 0%, rgba(43,143,214,.25) 100%),
+    url('https://picsum.photos/seed/simsree-mumbai/1000/640') !important;
+}
+
+/* HERO PHOTO right-column on inner pages */
+.hero-photo{
+  min-height:300px !important;
+  height:300px !important;
+  border-radius:var(--r-md);
+  background-image:
+    linear-gradient(135deg, rgba(15,20,80,.35) 0%, rgba(43,143,214,.20) 100%),
+    url('https://picsum.photos/seed/simsree-heritage/900/520') !important;
+}
+
+/* CARD-IMG (alumni, news, generic cards) — fixed photo with variety */
+.card-img{
+  min-height:180px !important;
+  height:180px !important;
+  background-image:
+    linear-gradient(135deg, rgba(15,20,80,.30) 0%, rgba(43,143,214,.20) 100%),
+    url('https://picsum.photos/seed/simsree-card/800/450') !important;
+}
+.card-img.alt{
+  background-image:
+    linear-gradient(135deg, rgba(43,143,214,.30) 0%, rgba(15,20,80,.40) 100%),
+    url('https://picsum.photos/seed/simsree-card2/800/450') !important;
+}
+.card-img.navy{
+  background-image:
+    linear-gradient(135deg, rgba(15,20,80,.70) 0%, rgba(30,42,107,.55) 100%),
+    url('https://picsum.photos/seed/simsree-card3/800/450') !important;
+}
+
+/* HIDE all text content inside image containers (placeholder labels
+   like "Illustrious", "Mumbai · Churchgate aerial · 700×340px") */
+.diff-card .img,
+.diff-card .img *,
+.bleed-row .img,
+.bleed-row .img *,
+.card-img,
+.card-img *,
+.hero-photo,
+.hero-photo *,
+.img:not(.no-hide):not(.eyebrow):not(.lede):not(.body){
+  color:transparent !important;
+  text-shadow:none !important;
+}
+.card-img *,.hero-photo *,.diff-card .img *,.bleed-row .img *{
+  display:none !important;
+}
+
+/* DIFFERENT SEEDS per card position so grids look varied */
+.g3 > a:nth-child(1) .card-img,.g3 > .card:nth-child(1) .card-img{
+  background-image:linear-gradient(135deg,rgba(15,20,80,.30),rgba(43,143,214,.20)),url('https://picsum.photos/seed/sim-a1/800/450') !important;
+}
+.g3 > a:nth-child(2) .card-img,.g3 > .card:nth-child(2) .card-img{
+  background-image:linear-gradient(135deg,rgba(43,143,214,.25),rgba(15,20,80,.40)),url('https://picsum.photos/seed/sim-a2/800/450') !important;
+}
+.g3 > a:nth-child(3) .card-img,.g3 > .card:nth-child(3) .card-img{
+  background-image:linear-gradient(135deg,rgba(15,20,80,.40),rgba(43,143,214,.20)),url('https://picsum.photos/seed/sim-a3/800/450') !important;
+}
+.g3 > a:nth-child(4) .card-img,.g3 > .card:nth-child(4) .card-img{
+  background-image:linear-gradient(135deg,rgba(43,143,214,.30),rgba(15,20,80,.45)),url('https://picsum.photos/seed/sim-a4/800/450') !important;
+}
+.g3 > a:nth-child(5) .card-img{
+  background-image:linear-gradient(135deg,rgba(15,20,80,.30),rgba(43,143,214,.25)),url('https://picsum.photos/seed/sim-a5/800/450') !important;
+}
+.g3 > a:nth-child(6) .card-img{
+  background-image:linear-gradient(135deg,rgba(43,143,214,.25),rgba(15,20,80,.40)),url('https://picsum.photos/seed/sim-a6/800/450') !important;
+}
+
+/* End QA FIX BLOCK v4 */
