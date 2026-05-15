@@ -1,0 +1,22 @@
+# Netlify config · static site, no build step
+# Mirrors the Vercel clean-URL behaviour.
+
+[build]
+  publish = "."
+
+[[redirects]]
+  from = "/*.html"
+  to = "/:splat"
+  status = 301
+  force = false
+
+# Cache the shared bundle for a day; cache HTML for no time at all.
+[[headers]]
+  for = "/shared/*"
+  [headers.values]
+    Cache-Control = "public, max-age=86400, must-revalidate"
+
+[[headers]]
+  for = "/*.html"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"

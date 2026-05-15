@@ -43,8 +43,10 @@
             document.querySelectorAll(targetSel).forEach(item => {
               const cats = (item.getAttribute('data-cat') || '').split(' ');
               if (filter === 'all' || cats.includes(filter)) {
+                item.classList.remove('chip-hidden');
                 item.style.display = '';
               } else {
+                item.classList.add('chip-hidden');
                 item.style.display = 'none';
               }
             });
@@ -101,18 +103,17 @@
         }
       });
     });
-    document.querySelectorAll('.modal-backdrop').forEach(modal => {
+    document.querySelectorAll('.modal-backdrop, .modal-shell').forEach(modal => {
       const close = () => {
         modal.classList.remove('open');
         document.body.style.overflow = '';
       };
-      const closeBtn = modal.querySelector('.modal-close');
-      if (closeBtn) closeBtn.addEventListener('click', close);
+      modal.querySelectorAll('.modal-close, [data-modal-close]').forEach(b => b.addEventListener('click', close));
       modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
     });
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
-        document.querySelectorAll('.modal-backdrop.open').forEach(m => {
+        document.querySelectorAll('.modal-backdrop.open, .modal-shell.open').forEach(m => {
           m.classList.remove('open');
           document.body.style.overflow = '';
         });
@@ -239,7 +240,7 @@
     if (p) document.body.classList.add('persona-' + p);
   }
 
-  /* ── Calendar (prev/next month) ──────────────────────────────── */
+  /* ── Calendar (prev/next month) + dynamic upcoming panel ─────── */
   function initCalendar() {
     document.querySelectorAll('[data-calendar]').forEach(cal => {
       let cursor = new Date(); // start at current month
@@ -248,6 +249,55 @@
       const gridEl = cal.querySelector('.cal-grid');
       const prevBtn = cal.querySelector('[data-cal-prev]');
       const nextBtn = cal.querySelector('[data-cal-next]');
+      const upcomingEl = document.querySelector('[data-upcoming-list]');
+
+      function buildEventDetails(year, monthIdx, day, ev) {
+        const monthAbbr = new Date(year, monthIdx, 1).toLocaleString('en-US', {month: 'short'});
+        const body = ev.body || `Details for "${ev.label}" coming soon. RSVP to be added to the invite list.`;
+        const speaker = ev.speaker || 'Speaker TBA';
+        const cat = ev.cat || ev.kind || 'lecture';
+        const org = ev.org || '';
+        const seed = (ev.label || '').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 14) || 'evt';
+        return `<details class="expand-item" data-cat="${cat}" data-day="${day}" data-month="${monthAbbr}">
+  <summary>
+    <div class="ex-date"><strong>${day}</strong><small>${monthAbbr}</small></div>
+    <div>
+      <div class="ex-title">${ev.label}</div>
+      <div class="ex-org">${org}</div>
+    </div>
+    <span></span>
+  </summary>
+  <div class="ex-detail">
+    <div class="ex-thumb" style="background-image:linear-gradient(135deg,rgba(15,20,80,.3),rgba(43,143,214,.2)),url('https://picsum.photos/seed/${seed}/600/400');"></div>
+    <div class="ex-body">
+      <p>${body}</p>
+      <div class="ex-meta">
+        <span><strong>Speaker:</strong> ${speaker}</span>
+        <span><strong>Format:</strong> In-person</span>
+        <span><strong>RSVP:</strong> <a href="#" style="color:var(--accent);">link →</a></span>
+      </div>
+    </div>
+  </div>
+</details>`;
+      }
+
+      function renderUpcoming() {
+        if (!upcomingEl) return;
+        const year = cursor.getFullYear();
+        const month = cursor.getMonth();
+        const monthName = cursor.toLocaleString('en-US', {month: 'long'});
+        const key = `${year}-${String(month + 1).padStart(2, '0')}`;
+        const monthEvents = events[key] || {};
+        const days = Object.keys(monthEvents).sort((a, b) => parseInt(a) - parseInt(b));
+        const heading = `<div class="eyebrow">Upcoming</div>
+        <h3 class="h3 mb-12">${days.length} events in ${monthName} ${year}</h3>`;
+        if (days.length === 0) {
+          upcomingEl.innerHTML = heading + `<div class="filter-empty"><h3>No events this month</h3><p>Use ← / → to browse other months, or subscribe for invites.</p></div>`;
+          return;
+        }
+        const items = days.map(d => buildEventDetails(year, month, d, monthEvents[d])).join('');
+        upcomingEl.innerHTML = heading + items;
+      }
       const render = () => {
         const year = cursor.getFullYear();
         const month = cursor.getMonth();
@@ -277,23 +327,128 @@
           html += `<div class="day muted">${i}</div>`;
         }
         gridEl.innerHTML = html;
-        // event clicks
+        // event clicks · highlight + move to top of upcoming list
         gridEl.querySelectorAll('.day.has-ev').forEach(d => {
           d.addEventListener('click', () => {
             const day = d.getAttribute('data-day');
-            const ev = monthEvents[day];
-            showToast(`${ev.label} · ${monthName} ${day}`, 'ok');
+            const monthAbbrev = new Date(year, month, 1).toLocaleString('en-US', {month: 'short'});
+
+            // clear previous active state on calendar
+            gridEl.querySelectorAll('.day.has-ev.active').forEach(x => x.classList.remove('active'));
+            d.classList.add('active');
+
+            if (!upcomingEl) return;
+
+            // CLOSE all currently-open + clear highlight
+            upcomingEl.querySelectorAll('details.expand-item').forEach(x => {
+              x.removeAttribute('open');
+              x.classList.remove('highlight');
+            });
+
+            // Find the matching expand-item by day + month
+            const items = Array.from(upcomingEl.querySelectorAll('details.expand-item'));
+            const matched = items.find(item => {
+              return item.getAttribute('data-day') === String(day) &&
+                     (item.getAttribute('data-month') || '').toLowerCase().startsWith(monthAbbrev.toLowerCase().slice(0,3));
+            });
+            if (!matched) return;
+
+            // MOVE to top of its parent (right under the heading)
+            const parent = matched.parentNode;
+            const heading = parent.querySelector('h3.h3, h3.mb-12');
+            if (heading && heading.nextSibling !== matched) {
+              parent.insertBefore(matched, heading.nextSibling);
+            }
+            // OPEN it and highlight
+            matched.open = true;
+            matched.classList.add('highlight');
+            // Scroll the matched item INTO VIEW only if it's not already visible.
+            // Keep the calendar in view: scroll so calendar top stays visible.
+            const calRect = cal.getBoundingClientRect();
+            const matchedRect = matched.getBoundingClientRect();
+            const viewportH = window.innerHeight;
+            // Only scroll if matched is below the viewport OR way above
+            if (matchedRect.bottom > viewportH || matchedRect.top < 80) {
+              // Scroll to a position that keeps the calendar's top edge visible
+              // Calculate target: scroll so that calendar top is ~120px from viewport top
+              const calOffset = calRect.top + window.scrollY;
+              window.scrollTo({top: Math.max(0, calOffset - 120), behavior: 'smooth'});
+            }
+            // Persist highlight (don't auto-remove — user wants it visible until next click)
           });
         });
       };
-      if (prevBtn) prevBtn.addEventListener('click', () => { cursor.setMonth(cursor.getMonth() - 1); render(); });
-      if (nextBtn) nextBtn.addEventListener('click', () => { cursor.setMonth(cursor.getMonth() + 1); render(); });
+      if (prevBtn) prevBtn.addEventListener('click', () => { cursor.setMonth(cursor.getMonth() - 1); render(); renderUpcoming(); });
+      if (nextBtn) nextBtn.addEventListener('click', () => { cursor.setMonth(cursor.getMonth() + 1); render(); renderUpcoming(); });
       render();
+      renderUpcoming();
     });
   }
 
-  /* ── Cohort/year selector (chip group on Batch Profile) ──────── */
-  // handled by initChips with data-chip-target if needed.
+  /* ── Cohort switcher (Batch Profile page) ────────────────────── */
+  function initCohortSwitcher() {
+    const switcher = document.querySelector('[data-cohort-switcher]');
+    if (!switcher) return;
+    const statsHost = document.querySelector('[data-cohort-stats]');
+    if (!statsHost) return;
+    let cohorts = {};
+    try { cohorts = JSON.parse(statsHost.getAttribute('data-cohorts') || '{}'); } catch (e) {}
+
+    function applyCohort(key) {
+      const data = cohorts[key];
+      if (!data) return;
+      // Update stat cells
+      document.querySelectorAll('[data-stat]').forEach(cell => {
+        const k = cell.getAttribute('data-stat');
+        const v = data[k];
+        if (v === undefined) return;
+        const n = cell.querySelector('.stat-n');
+        if (n) {
+          n.textContent = v;
+          n.removeAttribute('data-target');     // disable count-up override
+        }
+      });
+      // Update kv bars
+      document.querySelectorAll('[data-kv-key]').forEach(labelEl => {
+        const k = labelEl.getAttribute('data-kv-key');
+        const v = data[k];
+        if (v === undefined) return;
+        // Find the parent .kv element and update fill + pct text
+        const row = labelEl.closest('.kv');
+        if (!row) return;
+        const fill = row.querySelector('.kv-fill');
+        const pctEl = row.querySelector('.kv-pct');
+        if (typeof v === 'number') {
+          // Percentage value
+          if (fill) fill.style.width = v + '%';
+          if (pctEl) pctEl.textContent = v + '%';
+          row.style.setProperty('--pct', v + '%');
+        } else {
+          // String value (CET, GPA, etc.)
+          if (pctEl) pctEl.textContent = v;
+        }
+      });
+    }
+
+    switcher.querySelectorAll('.chip').forEach(chip => {
+      chip.addEventListener('click', () => {
+        switcher.querySelectorAll('.chip').forEach(c => c.classList.remove('on'));
+        chip.classList.add('on');
+        const filter = chip.getAttribute('data-filter');
+        applyCohort(filter);
+      });
+    });
+    // Dropdown variant
+    const input = switcher.querySelector('[data-cohort-input]');
+    if (input) {
+      input.addEventListener('change', () => applyCohort(input.value));
+    }
+    // Apply current cohort on load
+    const initial = switcher.querySelector('.chip.on');
+    if (initial) applyCohort(initial.getAttribute('data-filter'));
+    else if (input) applyCohort(input.value);
+  }
+  // initCohortSwitcher() called via bootAll
 
   /* ── Smooth-scroll for in-page anchors ───────────────────────── */
   function initAnchorScroll() {
@@ -393,6 +548,7 @@
     window.addEventListener('scroll', onScroll, {passive:true});
   }
 
+
   /* ── Scroll progress bar ─────────────────────────────────────── */
   function initScrollProgress() {
     let bar = document.querySelector('.scroll-progress');
@@ -402,89 +558,216 @@
       document.body.appendChild(bar);
     }
     const update = () => {
-      const h = document.documentElement;
-      const scrolled = h.scrollTop / Math.max(1, h.scrollHeight - h.clientHeight);
-      bar.style.transform = `scaleX(${scrolled})`;
+      const docEl = document.documentElement;
+      const top = (window.scrollY || docEl.scrollTop);
+      const max = (docEl.scrollHeight - docEl.clientHeight) || 1;
+      bar.style.width = ((top / max) * 100) + '%';
     };
-    update();
     window.addEventListener('scroll', update, {passive:true});
-    window.addEventListener('resize', update);
+    update();
   }
 
-  /* ── Carousel / testimonials auto-cycle ──────────────────────── */
-  function initCarousels() {
-    document.querySelectorAll('[data-carousel]').forEach(car => {
-      const slides = car.querySelectorAll('[data-slide]');
-      const dots = car.querySelectorAll('[data-dot]');
-      const interval = parseInt(car.getAttribute('data-interval')) || 5000;
-      let idx = 0;
-      let timer;
-      const show = (i) => {
-        slides.forEach((s, k) => s.classList.toggle('on', k === i));
-        dots.forEach((d, k) => d.classList.toggle('on', k === i));
-        idx = i;
-      };
-      const next = () => show((idx + 1) % slides.length);
-      const start = () => { timer = setInterval(next, interval); };
-      const stop = () => clearInterval(timer);
-      dots.forEach((d, i) => d.addEventListener('click', () => { show(i); stop(); start(); }));
-      car.addEventListener('mouseenter', stop);
-      car.addEventListener('mouseleave', start);
-      show(0); start();
-    });
-  }
-
-  /* ── Logo strip auto-scroll ──────────────────────────────────── */
-  function initLogoStrip() {
-    document.querySelectorAll('[data-logo-strip]').forEach(strip => {
-      // duplicate children for seamless loop
-      const inner = strip.querySelector('.logo-strip-inner');
-      if (!inner) return;
-      inner.innerHTML += inner.innerHTML;
-    });
-  }
-
-  /* ── Sticky in-page nav (TOC) ────────────────────────────────── */
-  function initStickyToc() {
-    document.querySelectorAll('[data-toc]').forEach(toc => {
-      const links = toc.querySelectorAll('a[href^="#"]');
-      const targets = Array.from(links).map(l => document.querySelector(l.getAttribute('href'))).filter(Boolean);
-      const onScroll = () => {
-        let active = -1;
-        targets.forEach((t, i) => {
-          if (t && t.getBoundingClientRect().top < 120) active = i;
+  /* ── Scrollytelling chapter swap ─────────────────────────────── */
+  function initScrolly() {
+    const sections = document.querySelectorAll('[data-scrolly]');
+    if (!sections.length || !('IntersectionObserver' in window)) return;
+    sections.forEach(section => {
+      const steps = section.querySelectorAll('.scrolly-step[data-step], .pa-scrolly-step[data-step]');
+      const host = section.querySelector('[data-visual-host]');
+      if (!steps.length || !host) return;
+      const visuals = host.querySelectorAll('[data-step]');
+      function activate(stepKey){
+        steps.forEach(function(s){
+          var on = s.getAttribute('data-step') === stepKey;
+          s.classList.toggle('on', on);
+          s.classList.toggle('is-active', on);
         });
-        links.forEach((l, i) => l.classList.toggle('on', i === active));
-      };
-      window.addEventListener('scroll', onScroll, {passive:true});
-      onScroll();
+        visuals.forEach(function(v){ v.classList.toggle('on', v.getAttribute('data-step') === stepKey); });
+      }
+      const obs = new IntersectionObserver(function(entries){
+        entries.forEach(function(en){
+          if (en.isIntersecting) {
+            activate(en.target.getAttribute('data-step'));
+          }
+        });
+      }, { rootMargin: '-40% 0px -40% 0px', threshold: 0 });
+      steps.forEach(function(s){ obs.observe(s); });
+      activate(steps[0].getAttribute('data-step'));
     });
   }
 
-  /* ── Init all ────────────────────────────────────────────────── */
-  function init() {
-    initBurger();
-    initChips();
-    initAccordion();
-    initTabs();
-    initModals();
-    initForms();
-    initPersonaRouter();
-    initCalendar();
-    initAnchorScroll();
-    initBarAnim();
-    initCountUp();
-    initReveal();
-    initParallax();
-    initScrollProgress();
-    initCarousels();
-    initLogoStrip();
-    initStickyToc();
+  /* ── Boot all initializers ──────────────────────────────────── */
+  function bootAll() {
+    try { initBurger();         } catch(e){}
+    try { initChips();          } catch(e){}
+    try { initAccordion();      } catch(e){}
+    try { initTabs();           } catch(e){}
+    try { initModals();         } catch(e){}
+    try { initForms();          } catch(e){}
+    try { initPersonaRouter();  } catch(e){}
+    try { initCalendar();       } catch(e){}
+    try { initAnchorScroll();   } catch(e){}
+    try { initBarAnim();        } catch(e){}
+    try { initCountUp();        } catch(e){}
+    try { initReveal();         } catch(e){}
+    try { initParallax();       } catch(e){}
+    try { initScrollProgress(); } catch(e){}
+    try { initCohortSwitcher(); } catch(e){}
+    try { initScrolly();        } catch(e){}
+    try { initTedxReveal();     } catch(e){}
+    try { initSpotlight();      } catch(e){}
+    try { initPfFlow();         } catch(e){}
+    try { initTocScrollSpy();   } catch(e){}
+  }
+
+  /* ── Generic TOC scroll-spy · activates aside[data-toc] anchors ── */
+  function initTocScrollSpy(){
+    var tocs = document.querySelectorAll('aside[data-toc], nav[data-toc]');
+    if (!tocs.length) return;
+    tocs.forEach(function(toc){
+      var links = Array.prototype.slice.call(toc.querySelectorAll('a[href^="#"]'));
+      var targets = links.map(function(l){
+        var id = l.getAttribute('href').slice(1);
+        return id ? document.getElementById(id) : null;
+      }).filter(Boolean);
+      if (!targets.length) return;
+      function update(){
+        var trig = window.scrollY + 220;
+        var active = targets[0];
+        for (var i = 0; i < targets.length; i++){
+          if (targets[i].offsetTop <= trig) active = targets[i];
+        }
+        var id = '#' + active.id;
+        links.forEach(function(l){ l.classList.toggle('on', l.getAttribute('href') === id); });
+      }
+      window.addEventListener('scroll', update, {passive:true});
+      window.addEventListener('resize', update, {passive:true});
+      update();
+    });
+  }
+
+  /* ── Placement-flow progress bar reveal on scroll ── */
+  function initPfFlow(){
+    var flow = document.querySelector('[data-pf-flow]');
+    if (!flow || !('IntersectionObserver' in window)) return;
+    var io = new IntersectionObserver(function(entries){
+      entries.forEach(function(en){
+        if (en.isIntersecting){
+          en.target.classList.add('is-revealed');
+          io.unobserve(en.target);
+        }
+      });
+    }, { rootMargin:'0px 0px -10% 0px', threshold:0.1 });
+    io.observe(flow);
+  }
+
+  /* ── Cursor-tracking spotlight on partner grid ── */
+  function initSpotlight(){
+    var section = document.querySelector('.pr-partners');
+    var host = document.querySelector('[data-spotlight-host]');
+    var halo = document.querySelector('[data-spotlight]');
+    if (!section || !host || !halo) return;
+    var tiles = host.querySelectorAll('.pr-tile');
+    if (!tiles.length) return;
+
+    var raf = null;
+    var lastX = 0, lastY = 0;
+
+    function onMove(e){
+      var rect = section.getBoundingClientRect();
+      lastX = e.clientX - rect.left;
+      lastY = e.clientY - rect.top;
+      if (raf) return;
+      raf = requestAnimationFrame(update);
+    }
+    function update(){
+      raf = null;
+      halo.style.left = lastX + 'px';
+      halo.style.top = lastY + 'px';
+      tiles.forEach(function(t){
+        var r = t.getBoundingClientRect();
+        var sr = section.getBoundingClientRect();
+        var tx = r.left - sr.left + r.width/2;
+        var ty = r.top - sr.top + r.height/2;
+        var dx = tx - lastX, dy = ty - lastY;
+        var d = Math.sqrt(dx*dx + dy*dy);
+        t.classList.remove('is-near','is-near-mid','is-near-far');
+        if (d < 140) t.classList.add('is-near');
+        else if (d < 240) t.classList.add('is-near-mid');
+        else if (d < 360) t.classList.add('is-near-far');
+      });
+    }
+    section.addEventListener('mousemove', onMove);
+    section.addEventListener('mouseenter', function(){
+      section.classList.add('is-hovering');
+      host.classList.add('is-hovering');
+    });
+    section.addEventListener('mouseleave', function(){
+      section.classList.remove('is-hovering');
+      host.classList.remove('is-hovering');
+      tiles.forEach(function(t){ t.classList.remove('is-near','is-near-mid','is-near-far'); });
+    });
+  }
+
+  /* ── TEDx scroll-driven reveal · IO fallback for non-scroll-timeline browsers ── */
+  function initTedxReveal(){
+    if (CSS.supports('animation-timeline: view()')) return; // native handles it
+    var els = document.querySelectorAll('[data-tedx-reveal], .tedx-section-head, .tedx-what-card, .tedx-program-card, .tedx-spotlight-card, .tedx-speaker-card, .tedx-involve-card, .tedx-history-step, .tedx-impact-cell, .tedx-final-card, .tedx-who-text, .tedx-who-img');
+    if (!els.length || !('IntersectionObserver' in window)) return;
+    els.forEach(function(el){ el.setAttribute('data-tedx-reveal',''); });
+    var io = new IntersectionObserver(function(entries){
+      entries.forEach(function(en){
+        if (en.isIntersecting){
+          en.target.classList.add('is-revealed');
+          io.unobserve(en.target);
+        }
+      });
+    }, { rootMargin: '0px 0px -10% 0px', threshold: 0.1 });
+    els.forEach(function(el){ io.observe(el); });
   }
 
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', init);
+    document.addEventListener('DOMContentLoaded', bootAll);
   } else {
-    init();
+    bootAll();
   }
+})();
+;
+/* Scroll-driven cover curtain (fallback for non-Chrome browsers) */
+(function(){
+  if (CSS.supports('animation-timeline: scroll()')) return;
+  const cover = document.querySelector('.sim-cover');
+  if (!cover) return;
+  const wrap = cover.closest('[data-cover]');
+  if (!wrap) return;
+  function update(){
+    const rect = wrap.getBoundingClientRect();
+    const vh = window.innerHeight || 1;
+    const prog = Math.max(0, Math.min(1, -rect.top / vh));
+    cover.style.transform = `translateY(${-prog * 32}%) scale(${1 + prog * 0.02})`;
+    cover.style.opacity = String(Math.max(0, 1 - prog * 1.2));
+    cover.style.filter = `blur(${prog * 6}px)`;
+  }
+  window.addEventListener('scroll', update, {passive:true});
+  update();
+})();
+;
+/* Cover-mode reveal */
+(function(){
+  if (!document.body.classList.contains('has-cover')) return;
+  let lifted = false;
+  function lift(){
+    if (lifted) return;
+    lifted = true;
+    document.body.classList.add('cover-lifted');
+    setTimeout(() => {
+      window.scrollTo({top: window.innerHeight, behavior: 'smooth'});
+    }, 200);
+  }
+  window.addEventListener('wheel',   () => lift(), {passive:true, once:true});
+  window.addEventListener('touchmove', () => lift(), {passive:true, once:true});
+  window.addEventListener('scroll',  () => { if (window.scrollY > 4) lift(); }, {passive:true});
+  window.addEventListener('keydown', (e) => {
+    if (['ArrowDown','PageDown','Space','End'].includes(e.code)) lift();
+  }, {once:true});
 })();
